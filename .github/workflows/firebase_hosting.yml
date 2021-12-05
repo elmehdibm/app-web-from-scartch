@@ -1,0 +1,61 @@
+name: Firebase Hosting CI/CD
+
+on:
+  ## Event push
+  push:
+    branches: [main]
+  ## Event release published
+  release:
+    types: [published]
+
+jobs:
+  Build_Deploy_Web:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [10.x]
+
+    env:
+      CI_FIREBASE_MESSAGE: ${{ github.event.head_commit.message }} - ${{ github.event.head_commit.url }}/checks
+
+    steps:
+      ## Checkout current branch
+      - uses: actions/checkout@v2
+
+      ## Setup node
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      ## Update .env file
+      - name: Update env file Dev
+        if: contains(github.ref, 'refs/heads/feature/') || github.ref == 'refs/heads/develop'
+        run: cp -f src/config/envs/.env.development.json src/.env.json
+      - name: Update env file PreProd
+        if: contains(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/preprod'
+        run: cp -f src/config/envs/.env.preprod.json src/.env.json
+      - name: Update env file Prod
+        if: github.ref == 'refs/heads/master'
+        run: cp -f src/config/envs/.env.production.json src/.env.json
+
+      ## Install dependencies
+      - name: Install dependencies
+        run: |
+          yarn install
+
+
+      ## Build project
+      - name: Build Dev Mode
+        run: |
+          npm run build
+          
+      ## Deploy Production
+      - name: Deploy Production
+        if: github.ref == 'refs/heads/master'
+        uses: w9jds/firebase-action@master
+        with:
+          args: deploy --only hosting -P production --token ${{ secrets.FIREBASE_TOKEN }}
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
